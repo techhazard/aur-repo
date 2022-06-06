@@ -25,14 +25,14 @@ else
 fi
 
 function gpg_generate_key() {
-	local gpg_user="${1}"
+	local gpg_user="${USER}@${HOSTNAME}.local"
 	# TODO: 100 years? maybe we should think about key-rotation
 	dbg "Generating GPG key for ${gpg_user}"
 	gpg --batch --passphrase "" --pinentry-mode loopback --quick-generate-key "${gpg_user}" default default 100y 2>/dev/null && gpg_get_fp "${gpg_user}"
 }
 
 function gpg_get_fp() {
-	local gpg_user="${1}"
+	local gpg_user="${USER}@${HOSTNAME}.local"
 	dbg "Printing gpg key for $gpg_user"
 	gpg --list-secret-keys --keyid-format short --with-colons "${1}" 2>/dev/null | grep '^sec' | awk -F: '$1=="sec" {print $5}'
 }
@@ -97,7 +97,6 @@ function main() {
 	aur_url="${AUR_REPO_URL}/${aur_package}.git"
 	build_dir="${AUR_BUILD_DIR}/${aur_package}"
 
-	gpg_user="${USER}@${HOSTNAME}.local"
 	gpg_fp="$(gpg_get_fp "${gpg_user}" || gpg_generate_key "${gpg_user}" )"
 
 	if [[ ! -d "${build_dir}" ]]; then
@@ -113,4 +112,6 @@ function main() {
 	add_packages_to_repo
 }
 
-main "${@}"
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

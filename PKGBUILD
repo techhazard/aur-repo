@@ -1,6 +1,6 @@
 # Maintainer: Vince van Oosten <techhazard@codeforyouand.me>
 pkgname=aur-repo
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 epoch=
 pkgdesc=""
@@ -38,7 +38,8 @@ check() {
 }
 
 package() {
-	src="${pkgname}-${pkgver}"
+	#src="${pkgname}-${pkgver}"
+	src="${pkgname}"
 	install -D -m 755 -t $pkgdir/usr/bin/                "${src}"/bin/*
 	install -D -m 644 -t $pkgdir/usr/lib/systemd/system/ "${src}"/systemd/system/*
 }

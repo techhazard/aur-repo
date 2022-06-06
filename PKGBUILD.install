@@ -1,24 +1,57 @@
+#!/bin/bash
+aur_user=aur-repo
+gpg_user="${aur_user}@${HOSTNAME}.localhost"
 
-AUR_DIR="${XDG_CONFIG_HOME:-/var/lib}/aur-repo"
-BUILD_DIR="${XDG_CACHE_DIR:-/var/cache}/aur-repo"
+AUR_DIR="${XDG_CONFIG_HOME:-/var/lib}/${aur_user}"
+BUILD_DIR="${XDG_CACHE_DIR:-/var/cache}/${aur_user}"
+
+_gpg_gen_key() {
+	su ${aur_user} -c "/usr/bin/gpg --batch --passphrase '' --pinentry-mode loopback --quick-generate-key '${gpg_user}' default default 100y"
+	sync
+	sleep 2
+}
+
+_gpg_export_pubkey() {
+	su ${aur_user} -c "/usr/bin/gpg --export --armor ${gpg_user} "
+}
 
 post_install() {
-	useradd --system --home-dir "${AUR_DIR}" aur-repo
+	set -x
+	useradd --system --home-dir "${AUR_DIR}" ${aur_user}
 
 	mkdir -p "${AUR_DIR}" "${BUILD_DIR}"
-	chown -R aur-repo:aur-repo "${AUR_DIR}" "${BUILD_DIR}"
+	chown -R ${aur_user}: "${AUR_DIR}" "${BUILD_DIR}"
 	chmod o= -R "${AUR_DIR}" "${BUILD_DIR}"
+
+	if ! grep -q '^\[${aur_user}]'; then
+		cat >> /etc/pacman.conf <<-PACMAN_CONF
+			[aur-repo]
+			SigLevel = Required
+			Server = file://${AUR_DIR}
+		PACMAN_CONF
+	fi
+
+	_gpg_gen_key
+	_gpg_export_pubkey | pacman-key --add
+
+	pacman-key --finger "${gpg_user}"
+	pacman-key --lsign  "${gpg_user}"
 }
 
 
 pre_remove() {
-	for unit in $(systemctl list-dependencies --plain iwd-firewalld-zone.target); do
+	set -x
+	for unit in $(systemctl list-dependencies --plain "aur-repo.target") aur-repo.timer; do
 		systemctl disable --now "${unit}"
 	done
 }
 
 
 post_remove() {
-	userdel --remove --force aur-repo
+	set -x
+	userdel --remove --force ${aur_user}
 	rm -rf "${AUR_DIR}" "${BUILD_DIR}"
+
+	# comment-out aur repo
+	sed -i "/^\[aur-repo]$/,/^Server = file:\/\/${AUR_DIR//\//\\\/}/s/^/#/" /etc/pacman.conf
 }

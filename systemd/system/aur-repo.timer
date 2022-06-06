@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly update for packages from AUR
+
+[Timer]
+OnCalendar=weekly
+AccuracySec=2h
+Persistent=true
+Unit=%p.target
+
+[Install]
+WantedBy=timers.target
+

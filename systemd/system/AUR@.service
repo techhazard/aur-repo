@@ -1,0 +1,17 @@
+[Unit]
+Description=add AUR upgrades of %i to local repo
+Before=aur-repo.target
+
+[Service]
+Slice=aur-repo.slice
+User=aur
+Type=oneshot
+
+# override this for specific packages with systemctl edit AUR@package-name.service
+Environment=EXTRA_MAKEPKG_FLAGS=""
+
+
+ExecStart=/usr/bin/aur-repo %i
+
+[Install]
+WantedBy=aur-repo.target

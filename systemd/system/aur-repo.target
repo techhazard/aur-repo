@@ -1,0 +1,6 @@
+[Unit]
+Description=Target for all AUR packages
+StopWhenUnneeded=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,6 @@
 # Maintainer: Vince van Oosten <techhazard@codeforyouand.me>
 pkgname=aur-repo
-pkgver=0.1.3
+pkgver=1.0.0
 pkgrel=1
 epoch=
 pkgdesc=""
@@ -19,8 +19,7 @@ backup=()
 options=()
 install=PKGBUILD.install
 changelog=
-#source=("${pkgname}.tgz::${url}/archive/refs/tags/${pkgver}.tar.gz")
-source=()
+source=("${pkgname}.tgz::${url}/archive/refs/tags/${pkgver}.tar.gz")
 validpgpkeys=()
 #sha256sums=('34db10cf6e465068c206fe2d8c3d24561c25e771cd4000c2d7baca365b496546')
 
@@ -38,8 +37,7 @@ check() {
 }
 
 package() {
-	#src="${pkgname}-${pkgver}"
-	src="${pkgname}"
+	src="${pkgname}-${pkgver}"
 	install -D -m 755 -t $pkgdir/usr/bin/                "${src}"/bin/*
 	install -D -m 644 -t $pkgdir/usr/lib/systemd/system/ "${src}"/systemd/system/*
 }

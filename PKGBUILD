@@ -21,7 +21,7 @@ install=PKGBUILD.install
 changelog=
 source=("${pkgname}.tgz::${url}/archive/refs/tags/${pkgver}.tar.gz")
 validpgpkeys=()
-#sha256sums=('34db10cf6e465068c206fe2d8c3d24561c25e771cd4000c2d7baca365b496546')
+sha256sums=('024e9b928d4bc75620cb9bd20cccd49b69390ae6bd09ba327254e2e172e6fb71')
 
 
 prepare() {

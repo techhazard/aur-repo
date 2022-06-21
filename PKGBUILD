@@ -1,6 +1,6 @@
 # Maintainer: Vince van Oosten <techhazard@codeforyouand.me>
 pkgname=aur-repo
-pkgver=0.1.1
+pkgver=0.1.3
 pkgrel=1
 epoch=
 pkgdesc=""
@@ -8,7 +8,7 @@ arch=('any')
 url="https://github.com/techhazard/${pkgname}"
 license=('GPL3')
 groups=()
-depends=(systemd bash gnupg findutils)
+depends=(systemd bash gnupg findutils coreutils)
 makedepends=(git)
 checkdepends=()
 optdepends=()

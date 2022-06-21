@@ -1,57 +1,104 @@
 #!/bin/bash
+set -o pipefail
+
 aur_user=aur-repo
-gpg_user="${aur_user}@${HOSTNAME}.localhost"
+GPG_EMAIL="${aur_user}@localhost"
 
 AUR_DIR="${XDG_CONFIG_HOME:-/var/lib}/${aur_user}"
 BUILD_DIR="${XDG_CACHE_DIR:-/var/cache}/${aur_user}"
 
+REPO_FILE="${AUR_DIR}/aur-repo.db.tar.zst"
+
+_run() {
+	su ${aur_user} -c "${*}"
+}
+
 _gpg_gen_key() {
-	su ${aur_user} -c "/usr/bin/gpg --batch --passphrase '' --pinentry-mode loopback --quick-generate-key '${gpg_user}' default default 100y"
+
+	if ! _run "/usr/bin/gpg --list-keys ${GPG_EMAIL}"; then
+		_run "/usr/bin/gpg --batch --passphrase '' --pinentry-mode loopback --quick-generate-key '${GPG_EMAIL}' default default 50y"
+	fi
 	sync
-	sleep 2
 }
 
 _gpg_export_pubkey() {
-	su ${aur_user} -c "/usr/bin/gpg --export --armor ${gpg_user} "
+	fingerprint="${1}"
+	_run "/usr/bin/gpg --export --armor ${fingerprint}"
 }
 
-post_install() {
-	set -x
-	useradd --system --home-dir "${AUR_DIR}" ${aur_user}
+_gpg_get_fingerprint_pubkey() {
+	_run "/usr/bin/gpg --with-colons --list-key ${GPG_EMAIL}" | awk -F: '$1=="pub" {print $5; exit}'
+}
 
+_pacman_add_key() {
+	fingerprint="${1}"
+	_gpg_export_pubkey "${fingerprint}" | pacman-key --add /dev/stdin
+	pacman-key --finger "${fingerprint}"
+	pacman-key --lsign  "${fingerprint}"
+
+}
+_update_service_file() {
+	sed -i -e '/^Environment=SIGN_KEY=$/cEnvironment=SIGN_KEY='"${fingerprint}" /usr/lib/systemd/system/AUR@.service
+	sed -i -e '/^Environment=REPO_FILE=$/cEnvironment=REPO_FILE='"${REPO_FILE}" /usr/lib/systemd/system/AUR@.service
+	sed -i -e '/^User=/cUser='"${aur_user}"										/usr/lib/systemd/system/AUR@.service
+}
+_add_aur_repo_to_pacman() {
+	cat >> /etc/pacman.conf <<-PACMAN_CONF
+
+		[aur-repo]
+		SigLevel = Required
+		Server = file://${AUR_DIR}
+	PACMAN_CONF
+}
+
+_has_aur_repo() {
+	grep -qF '[aur-repo]' /etc/pacman.conf
+}
+
+_remove_aur_repo_from_pacman() {
+	sed -i -e '/^\[aur-repo]$/ , /^Server = file:\/\/'"${AUR_DIR//\//\\\/}"'$/d' /etc/pacman.conf
+}
+
+_add_directories() {
 	mkdir -p "${AUR_DIR}" "${BUILD_DIR}"
 	chown -R ${aur_user}: "${AUR_DIR}" "${BUILD_DIR}"
 	chmod o= -R "${AUR_DIR}" "${BUILD_DIR}"
-
-	if ! grep -q '^\[${aur_user}]'; then
-		cat >> /etc/pacman.conf <<-PACMAN_CONF
-			[aur-repo]
-			SigLevel = Required
-			Server = file://${AUR_DIR}
-		PACMAN_CONF
-	fi
-
-	_gpg_gen_key
-	_gpg_export_pubkey | pacman-key --add
-
-	pacman-key --finger "${gpg_user}"
-	pacman-key --lsign  "${gpg_user}"
 }
 
+_create_repo() {
+	_run repo-add  --sign --key "${fingerprint}" "${REPO_FILE}"
+}
+
+post_install() {
+	useradd --system --home-dir "${AUR_DIR}" ${aur_user}
+
+	_add_directories
+
+	_gpg_gen_key
+
+	fingerprint="$(_gpg_get_fingerprint_pubkey)"
+
+	_pacman_add_key "${fingerprint}"
+	_update_service_file
+
+	_create_repo
+
+	grep -q '^\[aur-repo]' /etc/pacman.conf || _add_aur_repo_to_pacman
+}
 
 pre_remove() {
-	set -x
-	for unit in $(systemctl list-dependencies --plain "aur-repo.target") aur-repo.timer; do
+	for unit in $(systemctl list-dependencies --plain aur-repo.target) aur-repo.timer; do
 		systemctl disable --now "${unit}"
 	done
+	fingerprint="$(awk -F= '$2=="SIGN_KEY" {print $3}' /usr/lib/systemd/system/AUR@.service )"
+	_remove_aur_repo_from_pacman
+	grep -vq '^\[aur-repo]' && pacman-key --delete "$(_gpg_get_fingerprint_pubkey)"
 }
 
 
 post_remove() {
-	set -x
+	# run deletions as $aur_user to make sure we don't accidentally fuck up
+	# /var/lib
+	_run "rm -rf ${AUR_DIR} ${BUILD_DIR}"
 	userdel --remove --force ${aur_user}
-	rm -rf "${AUR_DIR}" "${BUILD_DIR}"
-
-	# comment-out aur repo
-	sed -i "/^\[aur-repo]$/,/^Server = file:\/\/${AUR_DIR//\//\\\/}/s/^/#/" /etc/pacman.conf
 }

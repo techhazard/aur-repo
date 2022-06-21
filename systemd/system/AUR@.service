@@ -4,11 +4,17 @@ Before=aur-repo.target
 
 [Service]
 Slice=aur-repo.slice
-User=aur
 Type=oneshot
 
-# override this for specific packages with systemctl edit AUR@package-name.service
+# these are filled by the install script
+User=
+Environment=SIGN_KEY=
+Environment=REPO_FILE=
+
+# override these for specific packages with systemctl edit AUR@package-name.service
 Environment=EXTRA_MAKEPKG_FLAGS=""
+Environment=AUR_BASE_URL=https://aur.archlinux.org
+
 
 
 ExecStart=/usr/bin/aur-repo %i

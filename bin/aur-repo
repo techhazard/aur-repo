@@ -3,10 +3,12 @@ set -euo pipefail
 
 package="${1?need package name as 1st argument}"
 
-AUR_BASE_URL="${AUR_BASE_URL:-'https://aur.archlinux.org'}"
+AUR_BASE_URL="${AUR_BASE_URL:?AUR_BASE_URL should be set inside systemd unit: AUR@.service or an override}"
+AUR_SIGN_KEY="${SIGN_KEY:?sign key should be set by install script, please remove and install aur-repo}"
+AUR_REPO_FILE="${REPO_FILE:?repo file should be set by install script, please remove and install aur-repo}"
+
 AUR_BUILD_DIR="${XDG_CACHE_HOME:=/var/cache}/aur-repo"
 AUR_REPO_DIR="${XDG_CONFIG_HOME:=/var/lib}/aur-repo"
-
 
 EXTRA_MAKEPKG_FLAGS="${EXTRA_MAKEPKG_FLAGS:-""}"
 
@@ -23,19 +25,6 @@ else
 		builtin true
 	}
 fi
-
-function gpg_generate_key() {
-	local gpg_user="${USER}@${HOSTNAME}.local"
-	# TODO: 100 years? maybe we should think about key-rotation
-	dbg "Generating GPG key for ${gpg_user}"
-	gpg --batch --passphrase "" --pinentry-mode loopback --quick-generate-key "${gpg_user}" default default 100y 2>/dev/null && gpg_get_fp "${gpg_user}"
-}
-
-function gpg_get_fp() {
-	local gpg_user="${USER}@${HOSTNAME}.local"
-	dbg "Printing gpg key for $gpg_user"
-	gpg --list-secret-keys --keyid-format short --with-colons "${1}" 2>/dev/null | grep '^sec' | awk -F: '$1=="sec" {print $5}'
-}
 
 function git_pull_changes() {
 	dbg "pulling changes for ${PWD}"
@@ -64,40 +53,39 @@ function git_get_epoch() {
 }
 
 function aur_build_packages() {
+	# need to export so makepkg can use it
 	declare -x SOURCE_DATE_EPOCH
 
-	if aur_package_names | sed 's/$/.sig/' | xargs stat &>/dev/null; then
+	if aur_package_signatures | xargs stat &>/dev/null; then
 		msg "All packages already exist, skipping build"
 		return 0
 	fi
 
 	msg "extra flags: ${EXTRA_MAKEPKG_FLAGS:=""}"
 
-	# Golang specifics
-	export GOCACHE="${build_dir}/.cache"
-	export GOPATH="${build_dir}/go"
 
 	# for repeatable builds, set timestamp to the latest git commit
 	SOURCE_DATE_EPOCH="$(git_get_epoch)"
 
-	makepkg --cleanbuild --check --clean ${EXTRA_MAKEPKG_FLAGS} --sign --key "${gpg_fp}" --force --noprogressbar
+	makepkg --cleanbuild --check --clean ${EXTRA_MAKEPKG_FLAGS} --sign --key "${AUR_SIGN_KEY}" --force --noprogressbar
 }
 
 function add_packages_to_repo() {
-	aur_package_names | sed 's/.*$/\0\n\0.sig/' | xargs cp -t "${AUR_REPO_DIR}/"
-	aur_package_names | xargs -IPKG repo-add -v -n -p --sign --key "${gpg_fp}" "${AUR_REPO_DIR}/PKG"
+	aur_packages_and_signatures | xargs cp -t "${AUR_REPO_DIR}/"
+	aur_package_names | xargs -IPKG repo-add -v -n -p --sign --key "${AUR_SIGN_KEY}" "${AUR_REPO_FILE}" "${AUR_REPO_DIR}/PKG"
 }
 
 
 function main() {
 	local aur_package="${1}"
 	local build_dir aur_url
-	local gpg_user gpg_fp
 
-	aur_url="${AUR_REPO_URL}/${aur_package}.git"
+	aur_url="${AUR_BASE_URL}/${aur_package}.git"
 	build_dir="${AUR_BUILD_DIR}/${aur_package}"
 
-	gpg_fp="$(gpg_get_fp "${gpg_user}" || gpg_generate_key "${gpg_user}" )"
+	# Golang specifics
+	export GOCACHE="${build_dir}/.cache"
+	export GOPATH="${build_dir}/go"
 
 	if [[ ! -d "${build_dir}" ]]; then
 		git clone "${aur_url}" "${build_dir}"
@@ -106,8 +94,8 @@ function main() {
 	cd "${build_dir}"
 	git remote set-url origin "${aur_url}"
 
-	aur_pull_changes
-	aur_build_package
+	git_pull_changes
+	aur_build_packages
 
 	add_packages_to_repo
 }
